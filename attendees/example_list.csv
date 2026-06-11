@@ -1,0 +1,16 @@
+name,email,status,institute,country,Discord Roles
+Example Name 1,example.name.1@example.com,PhD,INAF,IT,"student, participant-8-ny"
+Example Name 2,example.name.2@example.com,Postdoc,MPE,DE,"student, participant-8-ny"
+Example Name 3,example.name.3@example.com,MSc,UNIPD,IT,"student, participant-8-ny"
+Example Name 4,example.name.4@example.com,Faculty,IAC,ES,"lecturer, participant-8-ny"
+Example Name 5,example.name.5@example.com,PhD,CfA,US,"student, participant-8-ny"
+Example Name 6,example.name.6@example.com,Postdoc,OBSPM,FR,"TA, participant-8-ny"
+Example Name 7,example.name.7@example.com,BSc,ESO,CL,"student, participant-8-ny"
+Example Name 8,example.name.8@example.com,Faculty,UTokyo,JP,"lecturer, participant-8-ny"
+Example Name 9,example.name.9@example.com,Professional,IAA-CSIC,ES,"organiser, participant-8-ny"
+Example Name 10,example.name.10@example.com,Other,NBI,DK,"student, participant-8-ny"
+Example Name 11,example.name.11@example.com,Postdoc,MPA,DE,"TA, participant-8-ny"
+Example Name 12,example.name.12@example.com,PhD,DIAS,IE,student
+Example Name 13,example.name.13@example.com,MSc,KIAA,CN,"student, participant-8-ny"
+Example Name 14,example.name.14@example.com,BSc,NOA,GR,"student, participant-8-ny"
+Example Name 15,example.name.15@example.com,PhD,IoA,GB,"student, participant-8-ny"

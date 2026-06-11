@@ -1,0 +1,3 @@
+pip install -U "discord.py" python-dotenv
+echo "DISCORD_TOKEN=token" > .env
+python verify_bot.py

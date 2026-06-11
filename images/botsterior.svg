@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="sky" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#3b2a6b"/>
+      <stop offset="60%" stop-color="#1f1748"/>
+      <stop offset="100%" stop-color="#0d0828"/>
+    </radialGradient>
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7ee8fa"/>
+      <stop offset="100%" stop-color="#3eb4d0"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#sky)"/>
+
+  <!-- Stars -->
+  <g fill="#ffffff">
+    <circle cx="60" cy="80" r="2"/>
+    <circle cx="120" cy="50" r="1.5"/>
+    <circle cx="430" cy="70" r="2.5"/>
+    <circle cx="470" cy="140" r="1.8"/>
+    <circle cx="40" cy="200" r="1.5"/>
+    <circle cx="90" cy="380" r="2"/>
+    <circle cx="450" cy="350" r="2"/>
+    <circle cx="380" cy="430" r="1.5"/>
+    <circle cx="150" cy="470" r="1.8"/>
+    <circle cx="250" cy="40" r="1.5"/>
+    <circle cx="480" cy="280" r="1.5"/>
+    <circle cx="30" cy="430" r="2"/>
+  </g>
+  <g fill="#ffd86b" opacity="0.9">
+    <circle cx="100" cy="150" r="2.5"/>
+    <circle cx="420" cy="220" r="2"/>
+    <circle cx="70" cy="320" r="2.2"/>
+  </g>
+
+  <!-- Big faint Gaussian behind robot -->
+  <path d="M 20 410 Q 100 410 150 380 Q 220 240 256 230 Q 292 240 362 380 Q 412 410 492 410"
+        fill="none" stroke="#ffd86b" stroke-width="2.5" opacity="0.22"/>
+  <path d="M 20 410 Q 100 410 150 380 Q 220 240 256 230 Q 292 240 362 380 Q 412 410 492 410 L 492 470 L 20 470 Z"
+        fill="#ffd86b" opacity="0.05"/>
+
+  <!-- Antenna + star -->
+  <line x1="256" y1="135" x2="256" y2="90" stroke="#9aa3b2" stroke-width="6" stroke-linecap="round"/>
+  <g transform="translate(256 75)" filter="url(#glow)">
+    <polygon points="0,-14 4,-4 14,-4 6,2 9,12 0,6 -9,12 -6,2 -14,-4 -4,-4" fill="#ffd86b"/>
+  </g>
+
+  <!-- Graduation cap, centered + slight tilt -->
+  <g transform="translate(256 130) rotate(-8)">
+    <polygon points="-80,0 0,-22 80,0 0,22" fill="#0f0a25" stroke="#0d0828" stroke-width="2"/>
+    <ellipse cx="0" cy="3" rx="10" ry="3" fill="#ffd86b"/>
+    <line x1="60" y1="-3" x2="78" y2="32" stroke="#ffd86b" stroke-width="2.5"/>
+    <circle cx="80" cy="36" r="6" fill="#ffd86b"/>
+  </g>
+
+  <!-- Robot head -->
+  <g>
+    <rect x="146" y="160" width="220" height="200" rx="42" ry="42"
+          fill="url(#bodyGrad)" stroke="#1a3f4d" stroke-width="4"/>
+
+    <!-- Side panels (ears) -->
+    <rect x="152" y="250" width="14" height="50" rx="6" fill="#1a3f4d" opacity="0.25"/>
+    <rect x="346" y="250" width="14" height="50" rx="6" fill="#1a3f4d" opacity="0.25"/>
+
+    <!-- Eyes with Gaussian pupils -->
+    <g>
+      <circle cx="210" cy="240" r="32" fill="#0d0828"/>
+      <circle cx="210" cy="240" r="28" fill="#ffffff"/>
+      <path d="M 188 252 Q 200 252 205 240 Q 210 222 215 240 Q 220 252 232 252"
+            fill="none" stroke="#0d0828" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="220" cy="228" r="4" fill="#ffffff"/>
+
+      <circle cx="302" cy="240" r="32" fill="#0d0828"/>
+      <circle cx="302" cy="240" r="28" fill="#ffffff"/>
+      <path d="M 280 252 Q 292 252 297 240 Q 302 222 307 240 Q 312 252 324 252"
+            fill="none" stroke="#0d0828" stroke-width="3.5" stroke-linecap="round"/>
+      <circle cx="312" cy="228" r="4" fill="#ffffff"/>
+    </g>
+
+    <!-- Happy single-arc smile -->
+    <path d="M 195 295 Q 256 345 317 295"
+          fill="none" stroke="#0d0828" stroke-width="7" stroke-linecap="round"/>
+
+    <!-- Cheeks -->
+    <ellipse cx="180" cy="290" rx="11" ry="6" fill="#ff8fb1" opacity="0.6"/>
+    <ellipse cx="332" cy="290" rx="11" ry="6" fill="#ff8fb1" opacity="0.6"/>
+  </g>
+
+  <!-- Badge -->
+  <g transform="translate(256 415)">
+    <rect x="-78" y="-24" width="156" height="48" rx="24" ry="24"
+          fill="#0d0828" stroke="#ffd86b" stroke-width="2.5"/>
+    <text x="0" y="7" text-anchor="middle"
+          font-family="Georgia, 'Times New Roman', serif"
+          font-style="italic" font-size="26" fill="#ffd86b">
+      p(θ | D)
+    </text>
+  </g>
+</svg>
