@@ -1,4 +1,4 @@
-# Bot_sterior 🎓
+# Bot_sterior
 
 A Discord verification + role-management bot for the Astrostatistics School.
 
@@ -35,7 +35,7 @@ and posts a congratulations message in `#general`.
 pip install -r requirements.txt
 ```
 
-### 2. Configure the Discord application
+<!-- ### 2. Configure the Discord application
 
 In the [Discord Developer Portal](https://discord.com/developers/applications):
 
@@ -57,9 +57,9 @@ In the [Discord Developer Portal](https://discord.com/developers/applications):
 - In **Server Settings → Roles**, drag the bot's role **above** all roles it
   will manage (otherwise it can't assign them)
 - Set `#verify` so that `@everyone` can view and post there, and `Verified`
-  cannot. All other channels: `@everyone` denied, `Verified` allowed
+  cannot. All other channels: `@everyone` denied, `Verified` allowed -->
 
-### 4. Project files
+### 2. Project files
 
 Create a `.env` file next to `verify_bot.py`:
 
@@ -89,7 +89,7 @@ name,email,status,institute,country,Discord Roles
 Alice Martin,alice@inaf.it,confirmed,INAF,IT,"Students, participant-8-ny"
 ```
 
-### 5. Run
+### 3. Run
 
 ```bash
 python verify_bot.py
@@ -204,21 +204,6 @@ just use the commands and skip the restart).
 If you ever want to wipe runtime config back to the Python defaults,
 delete `config.json` and restart.
 
-## Hosting
-
-The bot needs to run on a machine with a permanent internet connection.
-
-| Option                     | Cost          | Notes                                 |
-| -------------------------- | ------------- | ------------------------------------- |
-| Institute server / shared VM | free         | Best option if available              |
-| Oracle Cloud Always Free   | free          | Small ARM VM, plenty for this         |
-| Hetzner / DigitalOcean VPS | €4–5 / month  | Tiny VPS, set-and-forget              |
-| Raspberry Pi at home       | hardware only | Works fine                            |
-| Your laptop                | free          | Only for testing / events you babysit |
-
-For a permanent deployment, see `DEPLOYMENT.md` and `botsterior.service` for
-a systemd-based setup that auto-restarts on failure and at boot.
-
 ## File layout
 
 ```
@@ -249,25 +234,6 @@ them yourself.
 
 No restart needed.
 
-## Moving the bot to another machine
-
-The bot identifies itself by token, not machine. To migrate:
-
-```bash
-# On the current machine
-tar czf Verification_bot_backup.tar.gz Verification_bot/
-
-# On the new machine
-tar xzf Verification_bot_backup.tar.gz
-cd Verification_bot
-pip install -r requirements.txt
-python verify_bot.py
-```
-
-Only one machine at a time should run the script with the same token —
-stop the old one before starting the new one. Make sure the tar includes
-`.env`, `attendees/`, `config.json`, and `graduation_state.json`,
-otherwise the new instance starts with defaults / no state.
 
 ## Security notes
 
