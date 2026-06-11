@@ -212,7 +212,7 @@ Verification_bot/
 ├── requirements.txt         # Python deps
 ├── .env                     # DISCORD_TOKEN (NEVER commit this)
 ├── attendees/               # one CSV/XLSX per school edition
-│   ├── astro_school_8_ny.csv
+│   ├── astro_school_100.csv
 │   ├── lecturers.csv
 │   └── tutors.csv
 ├── config.json              # runtime config (admin roles + schedule)
