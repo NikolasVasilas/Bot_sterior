@@ -19,11 +19,19 @@ Admin commands (caller must hold one of ADMIN_ROLES):
 
 Runtime changes to admin roles and the schedule are persisted to
 config.json, so they survive restarts.
+
+Duplicate-verification protection:
+    - If the same Discord member tries to verify again they get a private
+      reminder that they're already verified (no roles re-assigned).
+    - If a *different* Discord member tries to use an already-claimed name
+      or email, the attempt is blocked and an alert is sent to
+      ALERT_CHANNEL_NAME so admins can investigate.
 """
 
 import asyncio
 import json
 import os
+import random
 from datetime import datetime, timezone
 from pathlib import Path
 import discord
@@ -70,6 +78,20 @@ GRADUATION_SCHEDULE = [
     # {"date": "2026-07-15T20:00:00+02:00", "edition_role": "astrostat_school_7"},
 ]
 GRADUATION_STATE_FILE = "graduation_state.json"
+
+# Folder containing gifs/images used by !hack
+TROLLS_DIR = "trolls"
+TROLLS_EXTS = {".gif", ".png", ".jpg", ".jpeg", ".webp"}
+
+# Duplicate-verification protection.
+# When a name/email is used to verify, the Discord member ID is stored here.
+# Any later attempt by a *different* member using the same identity is blocked
+# and an alert is sent to ALERT_CHANNEL_NAME (set to None to disable alerts).
+VERIFIED_LOG_FILE = "verified_log.json"
+ALERT_CHANNEL_NAME = "mod-log"   # channel name to post impersonation alerts
+ALERT_CATEGORY_NAME = None       # optional category to disambiguate the channel
+
+NOT_ATTENDED_FILE = "not_attended.json"
 # ---------------------------------------------------------------------------
 
 
@@ -104,7 +126,7 @@ def _norm(s) -> str:
     return str(s or "").strip().lower()
 
 
-def _merge_frame(table: dict, df: pd.DataFrame) -> int:
+def _merge_frame(table: dict, df: pd.DataFrame, source_file: str = "") -> int:
     df = df.fillna("")
     df.columns = [_norm(c) for c in df.columns]
     if "name" not in df.columns and "email" not in df.columns:
@@ -114,6 +136,7 @@ def _merge_frame(table: dict, df: pd.DataFrame) -> int:
         record = {k: str(v).strip() for k, v in row.items()}
         raw_roles = record.get("discord roles", "")
         record["_roles"] = [r.strip() for r in raw_roles.split(",") if r.strip()]
+        record["_file"] = source_file
         if record.get("name"):
             table[_norm(record["name"])] = record
         if record.get("email"):
@@ -133,14 +156,14 @@ def load_attendees_from_dir(directory: str) -> dict:
         ext = f.suffix.lower()
         if ext == ".csv":
             df = pd.read_csv(f, dtype=str)
-            n = _merge_frame(table, df)
+            n = _merge_frame(table, df, f.name)
         elif ext == ".tsv":
             df = pd.read_csv(f, sep="\t", dtype=str)
-            n = _merge_frame(table, df)
+            n = _merge_frame(table, df, f.name)
         elif ext in (".xlsx", ".xls"):
             n = 0
             for _, df in pd.read_excel(f, sheet_name=None, dtype=str).items():
-                n += _merge_frame(table, df)
+                n += _merge_frame(table, df, f.name)
         else:
             continue
         print(f"  {f.name}: {n} rows")
@@ -166,6 +189,75 @@ def _save_grad_state(state: dict) -> None:
     Path(GRADUATION_STATE_FILE).write_text(json.dumps(state, indent=2))
 
 
+# ---- Verified-identity log ------------------------------------------------
+# Maps normalised attendee key → {"member_id": int, "name": str, "ts": str}
+# Persisted so duplicate checks survive restarts.
+_verified_log: dict = {}
+
+
+def _load_verified_log() -> None:
+    global _verified_log
+    p = Path(VERIFIED_LOG_FILE)
+    if p.exists():
+        try:
+            _verified_log = json.loads(p.read_text())
+        except Exception:
+            _verified_log = {}
+
+
+def _save_verified_log() -> None:
+    Path(VERIFIED_LOG_FILE).write_text(json.dumps(_verified_log, indent=2))
+
+
+def _claim_identity(key: str, member: discord.Member, display_name: str) -> None:
+    """Record that *member* verified with this attendee key."""
+    _verified_log[key] = {
+        "member_id": member.id,
+        "member_tag": str(member),
+        "attendee_name": display_name,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+    _save_verified_log()
+
+
+def _check_identity(key: str, member: discord.Member
+                    ) -> tuple[str, dict | None]:
+    """
+    Return (status, entry) where status is one of:
+      "ok"           — key has never been claimed
+      "self"         — this member already claimed it (re-verify)
+      "stolen"       — a *different* member already claimed it
+    """
+    entry = _verified_log.get(key)
+    if entry is None:
+        return "ok", None
+    if entry["member_id"] == member.id:
+        return "self", entry
+    return "stolen", entry
+
+
+# ---- Not-attended list ----------------------------------------------------
+# Maps str(member_id) → {name, tag, ts, marked_by}.
+# Members in this dict are skipped during graduation.
+_not_attended: dict = {}
+
+
+def _load_not_attended() -> None:
+    global _not_attended
+    p = Path(NOT_ATTENDED_FILE)
+    if p.exists():
+        try:
+            _not_attended = json.loads(p.read_text())
+        except Exception:
+            _not_attended = {}
+
+
+def _save_not_attended() -> None:
+    Path(NOT_ATTENDED_FILE).write_text(json.dumps(_not_attended, indent=2))
+
+
+# ---------------------------------------------------------------------------
+
 def find_channel_by_name(guild: discord.Guild, name: str,
                          category_name: str | None = None):
     if not name:
@@ -183,9 +275,10 @@ def find_channel_by_name(guild: discord.Guild, name: str,
 
 
 async def do_graduation(guild: discord.Guild, edition_role_name: str
-                        ) -> tuple[int, list[str]]:
+                        ) -> tuple[int, int, list[str]]:
     """For every member with `edition_role_name`, remove GRADUATE_FROM and
-    add GRADUATE_TO. The edition role itself is preserved."""
+    add GRADUATE_TO. Members in _not_attended are skipped.
+    Returns (moved, skipped, errors)."""
     edition_role = discord.utils.get(guild.roles, name=edition_role_name)
     from_role = discord.utils.get(guild.roles, name=GRADUATE_FROM)
     to_role = discord.utils.get(guild.roles, name=GRADUATE_TO)
@@ -198,10 +291,14 @@ async def do_graduation(guild: discord.Guild, edition_role_name: str
     if not to_role:
         errors.append(f"role '{GRADUATE_TO}' not found")
     if errors:
-        return 0, errors
+        return 0, 0, errors
 
     moved = 0
+    skipped = 0
     for member in list(edition_role.members):
+        if str(member.id) in _not_attended:
+            skipped += 1
+            continue
         try:
             if to_role not in member.roles:
                 await member.add_roles(to_role, reason=f"Graduated from {edition_role_name}")
@@ -212,7 +309,7 @@ async def do_graduation(guild: discord.Guild, edition_role_name: str
             errors.append(f"forbidden: {member.display_name}")
         except Exception as e:
             errors.append(f"{member.display_name}: {e}")
-    return moved, errors
+    return moved, skipped, errors
 
 
 async def graduation_scheduler():
@@ -231,10 +328,11 @@ async def graduation_scheduler():
             if now < sched:
                 continue
             for guild in client.guilds:
-                moved, errs = await do_graduation(guild, entry["edition_role"])
+                moved, skipped, errs = await do_graduation(guild, entry["edition_role"])
                 print(f"🎓 Scheduled graduation in {guild.name}: "
                       f"{moved} member(s) of {entry['edition_role']} graduated "
-                      f"({GRADUATE_FROM} → {GRADUATE_TO}). Errors: {errs}")
+                      f"({GRADUATE_FROM} → {GRADUATE_TO}), "
+                      f"{skipped} skipped (not attended). Errors: {errs}")
                 if moved > 0 and ANNOUNCE_CHANNEL_NAME:
                     ch = find_channel_by_name(
                         guild, ANNOUNCE_CHANNEL_NAME, ANNOUNCE_CATEGORY_NAME)
@@ -261,6 +359,8 @@ intents.members = True
 client = discord.Client(intents=intents)
 
 load_runtime_config()
+_load_verified_log()
+_load_not_attended()
 ATTENDEES = load_attendees_from_dir(ATTENDEES_DIR)
 
 
@@ -314,10 +414,28 @@ async def handle_admin_command(message: discord.Message) -> bool:
         if not is_admin(message.author):
             return True
         meta = ATTENDEES.get("_meta", {})
-        await message.channel.send(
-            f"📊 {meta.get('total', 0)} attendees loaded "
-            f"({meta.get('keys', 0)} lookup keys) "
-            f"across {len(meta.get('files', []))} file(s).")
+        total_attendees = meta.get("total", 0)
+        files = meta.get("files", [])
+
+        # Count verifications per source file by looking up each claimed key
+        counts_by_file: dict[str, int] = {}
+        for key in _verified_log:
+            rec = ATTENDEES.get(key)
+            if rec and rec.get("_file"):
+                fname = rec["_file"]
+                counts_by_file[fname] = counts_by_file.get(fname, 0) + 1
+        total_verified = len(_verified_log)
+
+        lines = [
+            f"📊 **{total_verified} / {total_attendees} attendees verified** "
+            f"across {len(files)} file(s):"
+        ]
+        for fname, n_rows in files:
+            n_verified = counts_by_file.get(fname, 0)
+            bar = f"{n_verified}/{n_rows}"
+            lines.append(f"  • `{fname}` — {bar} verified")
+
+        await message.channel.send("\n".join(lines))
         return True
 
     if cmd.startswith("!graduate"):
@@ -338,9 +456,11 @@ async def handle_admin_command(message: discord.Message) -> bool:
                 delete_after=25)
             return True
         edition_role = parts[1].strip()
-        moved, errs = await do_graduation(message.guild, edition_role)
+        moved, skipped, errs = await do_graduation(message.guild, edition_role)
         msg = (f"🎓 {moved} member(s) of **{edition_role}** graduated "
                f"(`{GRADUATE_FROM}` → `{GRADUATE_TO}`).")
+        if skipped:
+            msg += f"\n⏭️ {skipped} member(s) skipped (marked as not attended)."
         if errs:
             msg += f"\nIssues: {errs}"
 
@@ -483,6 +603,113 @@ async def handle_admin_command(message: discord.Message) -> bool:
             delete_after=30)
         return True
 
+    if cmd.startswith("!not_attended"):
+        if not is_admin(message.author):
+            await message.channel.send(
+                f"🚫 Only members with one of these roles can run that: "
+                f"{', '.join(sorted(ADMIN_ROLES))}",
+                delete_after=10)
+            return True
+
+        parts = content.split(maxsplit=2)
+        sub = parts[1].lower() if len(parts) > 1 else ""
+
+        if sub == "list":
+            if not _not_attended:
+                await message.channel.send("📋 No members marked as not attended.")
+            else:
+                lines = ["📋 **Not attended** (will be skipped at graduation):"]
+                for _, info in _not_attended.items():
+                    lines.append(
+                        f"  • **{info['name']}** (`{info['tag']}`) "
+                        f"— marked by {info['marked_by']} on {info['ts'][:10]}")
+                await message.channel.send("\n".join(lines))
+            return True
+
+        if sub == "remove":
+            if not message.mentions:
+                await message.channel.send(
+                    "Usage: `!not_attended remove @member`", delete_after=10)
+                return True
+            removed = []
+            not_found = []
+            for target in message.mentions:
+                key = str(target.id)
+                if key in _not_attended:
+                    _not_attended.pop(key)
+                    removed.append(target.display_name)
+                else:
+                    not_found.append(target.display_name)
+            if removed:
+                _save_not_attended()
+                names = ", ".join(f"**{n}**" for n in removed)
+                await message.channel.send(
+                    f"✅ {names} removed from the not-attended list — "
+                    "they will be promoted at graduation.")
+            if not_found:
+                names = ", ".join(f"**{n}**" for n in not_found)
+                await message.channel.send(
+                    f"ℹ️ {names} were not on the not-attended list.")
+            return True
+
+        # Default: mark one or more @mentions as not attended
+        if not message.mentions:
+            await message.channel.send(
+                "Usage:\n"
+                "`!not_attended @member [@member …]` — mark as not attended\n"
+                "`!not_attended remove @member [@member …]` — unmark\n"
+                "`!not_attended list` — show everyone marked",
+                delete_after=20)
+            return True
+
+        marked = []
+        for target in message.mentions:
+            _not_attended[str(target.id)] = {
+                "name": target.display_name,
+                "tag": str(target),
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "marked_by": str(message.author),
+            }
+            marked.append(target.display_name)
+        _save_not_attended()
+        names = ", ".join(f"**{n}**" for n in marked)
+        await message.channel.send(
+            f"🚫 {names} marked as not attended — will be skipped at graduation.")
+        return True
+
+    if cmd.startswith("!hack"):
+        parts = content.split(maxsplit=1)
+        if len(parts) < 2 or not parts[1].strip():
+            await message.channel.send(
+                "Usage: `!hack <person or @mention>`", delete_after=10)
+            return True
+        target = parts[1].strip()
+
+        trolls_path = Path(TROLLS_DIR)
+        if not trolls_path.is_dir():
+            await message.channel.send(
+                f"❌ Trolls folder `{TROLLS_DIR}/` not found.", delete_after=10)
+            return True
+        media = [f for f in trolls_path.iterdir()
+                 if f.suffix.lower() in TROLLS_EXTS]
+        if not media:
+            await message.channel.send(
+                f"❌ No images/gifs found in `{TROLLS_DIR}/`.", delete_after=10)
+            return True
+
+        chosen = random.choice(media)
+
+        countdown_msg = await message.channel.send(
+            f"💻 Hacking **{target}**... `3`")
+        await asyncio.sleep(1)
+        await countdown_msg.edit(content=f"💻 Hacking **{target}**... `2`")
+        await asyncio.sleep(1)
+        await countdown_msg.edit(content=f"💻 Hacking **{target}**... `1`")
+        await asyncio.sleep(1)
+        await countdown_msg.edit(content=f"✅ **{target}** has been hacked! 💀🔓")
+        await message.channel.send(file=discord.File(chosen))
+        return True
+
     return False
 
 
@@ -525,6 +752,42 @@ async def on_message(message: discord.Message):
 
     guild = message.guild
     member = message.author
+
+    # --- Duplicate-verification check --------------------------------------
+    status, prior = _check_identity(query, member)
+
+    if status == "self":
+        # Same person verifying again — just remind them.
+        await reply_and_clean(
+            message,
+            f"{member.mention} ✅ You're already verified! "
+            "If you're missing a role, please ping an organiser.")
+        return
+
+    if status == "stolen":
+        # A different Discord account is trying to use a claimed identity.
+        alert_msg = (
+            f"🚨 **Duplicate verification attempt blocked**\n"
+            f"**Attacker:** {member.mention} (`{member}` · ID `{member.id}`)\n"
+            f"**Claimed identity:** `{query}`\n"
+            f"**Originally verified by:** `{prior['member_tag']}` "
+            f"(ID `{prior['member_id']}`) at {prior['ts']}"
+        )
+        print(f"⚠️ DUPLICATE VERIFY: {member} tried to use already-claimed "
+              f"key '{query}' (originally claimed by {prior['member_tag']})")
+        alert_ch = find_channel_by_name(guild, ALERT_CHANNEL_NAME, ALERT_CATEGORY_NAME)
+        if alert_ch:
+            try:
+                await alert_ch.send(alert_msg)
+            except discord.Forbidden:
+                pass
+        await reply_and_clean(
+            message,
+            f"{member.mention} ❌ That identity is already registered to another "
+            "account. If this is a mistake, please contact an organiser directly.")
+        return
+    # ----------------------------------------------------------------------
+
     role_objects = []
     verified_role = discord.utils.get(guild.roles, name=VERIFIED_ROLE_NAME)
     if verified_role:
@@ -549,6 +812,8 @@ async def on_message(message: discord.Message):
             delete_user_msg=False)
         return
 
+    _claim_identity(query, member, record.get("name", query))
+
     if RENAME_ON_VERIFY and record.get("name"):
         try:
             await member.edit(nick=record["name"])
@@ -565,6 +830,20 @@ async def on_message(message: discord.Message):
     await reply_and_clean(
         message,
         f"✅ Welcome **{record['name']}**{extra_str}! You now have access to the rest of the server.")
+
+    if ANNOUNCE_CHANNEL_NAME:
+        announce_ch = find_channel_by_name(
+            guild, ANNOUNCE_CHANNEL_NAME, ANNOUNCE_CATEGORY_NAME)
+        if announce_ch:
+            try:
+                institute_str = (f" from **{record['institute']}**"
+                                 if record.get("institute") else "")
+                await announce_ch.send(
+                    f"👋 Please welcome **{record['name']}**{institute_str} "
+                    f"who just joined us! 🎉"
+                )
+            except discord.Forbidden:
+                pass
 
 
 if __name__ == "__main__":

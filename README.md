@@ -1,4 +1,4 @@
-# Bot_sterior
+# Bot_sterior 🎓
 
 A Discord verification + role-management bot for the Astrostatistics School.
 
@@ -6,9 +6,11 @@ When a new member joins the server, they can only see the `#verify` channel.
 They post their **full name** or **registered email**, and the bot:
 
 1. Looks them up in the attendee list (CSV / TSV / XLSX files)
-2. Assigns them `Verified` plus any roles listed in the `Discord Roles` column
-3. Renames them to their real name on the server
-4. Deletes the message for privacy and welcomes them publicly
+2. Checks they haven't already verified (duplicate / impersonation protection)
+3. Assigns them `Verified` plus any roles listed in the `Discord Roles` column
+4. Renames them to their real name on the server
+5. Deletes the message for privacy and sends a private confirmation
+6. Posts a public welcome message in `#general`
 
 It also handles the natural school lifecycle — when a school edition ends,
 a single `!graduate` command promotes that class from `student` → `veteran`
@@ -19,10 +21,19 @@ and posts a congratulations message in `#general`.
 - Multi-file attendee loading (one CSV per school edition, lecturers, TAs, …)
 - Multiple roles per person (comma-separated in the `Discord Roles` column)
 - Status filter — only people with the right registration status can verify
+- **Duplicate-verification protection** — re-verify attempts get a reminder;
+  a different account using a claimed identity is blocked and an alert is sent
+  to the configured mod channel; state persists across restarts via `verified_log.json`
+- Public welcome message in `#general` after every successful verification
 - `!reload` to pick up updated attendee files without restarting
-- `!graduate <edition_role>` to promote a whole class from student → veteran
+- `!stats` shows per-file verified vs total counts
+- `!graduate <edition_role>` to promote a whole class from student → veteran,
+  automatically skipping anyone marked with `!not_attended`
+- `!not_attended @member` to flag someone who registered but didn't show up —
+  they keep their roles but are excluded from graduation; persisted in `not_attended.json`
 - Optional scheduled auto-graduation by date (editable at runtime)
 - Public congratulations message in `#general` when a class graduates
+- `!hack <person>` — troll command with a countdown that sends a random gif/image
 - Admin commands restricted to specific Discord roles (counsellor, admin, …)
 - Admin roles and the graduation schedule are **editable from Discord** —
   no restart needed, changes persist across restarts via `config.json`
@@ -35,7 +46,7 @@ and posts a congratulations message in `#general`.
 pip install -r requirements.txt
 ```
 
-<!-- ### 2. Configure the Discord application
+### 2. Configure the Discord application
 
 In the [Discord Developer Portal](https://discord.com/developers/applications):
 
@@ -57,9 +68,9 @@ In the [Discord Developer Portal](https://discord.com/developers/applications):
 - In **Server Settings → Roles**, drag the bot's role **above** all roles it
   will manage (otherwise it can't assign them)
 - Set `#verify` so that `@everyone` can view and post there, and `Verified`
-  cannot. All other channels: `@everyone` denied, `Verified` allowed -->
+  cannot. All other channels: `@everyone` denied, `Verified` allowed
 
-### 2. Project files
+### 4. Project files
 
 Create a `.env` file next to `verify_bot.py`:
 
@@ -89,7 +100,7 @@ name,email,status,institute,country,Discord Roles
 Alice Martin,alice@inaf.it,confirmed,INAF,IT,"Students, participant-8-ny"
 ```
 
-### 3. Run
+### 5. Run
 
 ```bash
 python verify_bot.py
@@ -108,16 +119,23 @@ or to be the server owner / a Discord-level admin.
 | Command   | What it does                                              |
 | --------- | --------------------------------------------------------- |
 | `!reload` | Re-reads all files in `attendees/`. Use after editing a CSV. |
-| `!stats`  | Shows how many attendees are loaded and from how many files. |
+| `!stats`  | Shows verified vs total count for each attendee file. |
 
 ### Graduation
 
-| Command                          | What it does                                                                |
-| -------------------------------- | --------------------------------------------------------------------------- |
-| `!graduate <edition_role>`       | For everyone with `<edition_role>`: removes `student`, adds `veteran`, keeps the edition role. Posts congrats in `#general`. |
+| Command                                        | What it does                                                                |
+| ---------------------------------------------- | --------------------------------------------------------------------------- |
+| `!graduate <edition_role>`                     | For everyone with `<edition_role>`: removes `student`, adds `veteran`, keeps the edition role. Skips anyone marked with `!not_attended`. Posts congrats in `#general`. |
+| `!not_attended @member [@member …]`            | Mark one or more members as not attended — they will be skipped at the next `!graduate`. |
+| `!not_attended remove @member [@member …]`     | Unmark — they will be promoted normally at graduation. |
+| `!not_attended list`                           | Show everyone currently marked, with who flagged them and when. |
 
 If `!graduate` is run inside `#verify`, the command and the reply
 auto-delete after 5 seconds to keep the channel tidy.
+
+The not-attended list is saved to `not_attended.json` and survives restarts.
+Members on the list keep all their existing roles — they are only skipped
+from the `student` → `veteran` promotion.
 
 ### Admin roles (runtime-editable)
 
@@ -129,6 +147,15 @@ auto-delete after 5 seconds to keep the channel tidy.
 
 Role names are case-insensitive. The server owner and Discord-level admins
 always pass the check, so you can't lock yourself out completely.
+
+### Fun / troll
+
+| Command            | What it does                                                       |
+| ------------------ | ------------------------------------------------------------------ |
+| `!hack <person>`   | Counts down 3 → 2 → 1, then sends a random gif/image from `trolls/`. `<person>` can be a plain name, a sentence, or a `@mention`. |
+
+Anyone can run `!hack`. Place your gifs and images in the `trolls/` folder
+(`.gif`, `.png`, `.jpg`, `.jpeg`, `.webp` are recognised).
 
 ### Scheduled (automatic) graduation (runtime-editable)
 
@@ -171,8 +198,17 @@ ALLOWED_STATUSES = {"confirmed", "accepted", "registered", "paid"}
 GRADUATE_FROM = "student"
 GRADUATE_TO = "veteran"
 
-ANNOUNCE_CHANNEL_NAME = "general"
-ANNOUNCE_CATEGORY_NAME = "chat-stuff"
+ANNOUNCE_CHANNEL_NAME = "general"      # welcome + graduation messages go here
+ANNOUNCE_CATEGORY_NAME = "chat-stuff"  # set to None to match by name only
+
+VERIFIED_LOG_FILE = "verified_log.json"  # persists claimed identities
+ALERT_CHANNEL_NAME = "mod-log"           # impersonation alerts go here (None to disable)
+ALERT_CATEGORY_NAME = None               # optional category for the alert channel
+
+TROLLS_DIR = "trolls"                    # folder of gifs/images for !hack
+TROLLS_EXTS = {".gif", ".png", ".jpg", ".jpeg", ".webp"}
+
+NOT_ATTENDED_FILE = "not_attended.json"  # members excluded from graduation
 
 ADMIN_ROLES = {"counsellor", "admin", "organiser", "organizer"}
 
@@ -204,6 +240,21 @@ just use the commands and skip the restart).
 If you ever want to wipe runtime config back to the Python defaults,
 delete `config.json` and restart.
 
+## Hosting
+
+The bot needs to run on a machine with a permanent internet connection.
+
+| Option                     | Cost          | Notes                                 |
+| -------------------------- | ------------- | ------------------------------------- |
+| Institute server / shared VM | free         | Best option if available              |
+| Oracle Cloud Always Free   | free          | Small ARM VM, plenty for this         |
+| Hetzner / DigitalOcean VPS | €4–5 / month  | Tiny VPS, set-and-forget              |
+| Raspberry Pi at home       | hardware only | Works fine                            |
+| Your laptop                | free          | Only for testing / events you babysit |
+
+For a permanent deployment, see `DEPLOYMENT.md` and `botsterior.service` for
+a systemd-based setup that auto-restarts on failure and at boot.
+
 ## File layout
 
 ```
@@ -212,18 +263,23 @@ Verification_bot/
 ├── requirements.txt         # Python deps
 ├── .env                     # DISCORD_TOKEN (NEVER commit this)
 ├── attendees/               # one CSV/XLSX per school edition
-│   ├── astro_school_100.csv
+│   ├── astro_school_8_ny.csv
 │   ├── lecturers.csv
 │   └── tutors.csv
+├── trolls/                  # gifs/images used by !hack
+│   └── *.gif / *.png / …
 ├── config.json              # runtime config (admin roles + schedule)
 ├── graduation_state.json    # which scheduled graduations have run
+├── verified_log.json        # which attendee identities have been claimed
+├── not_attended.json        # members excluded from graduation
 ├── botsterior.service       # systemd unit (for server deployment)
 ├── DEPLOYMENT.md            # step-by-step server setup
 └── README.md
 ```
 
-The last three files are created automatically; you don't have to make
-them yourself.
+`config.json`, `graduation_state.json`, `verified_log.json`, and
+`not_attended.json` are created automatically on first run — you don't have
+to make them yourself.
 
 ## Updating the attendee list during a school
 
@@ -234,6 +290,27 @@ them yourself.
 
 No restart needed.
 
+## Moving the bot to another machine
+
+The bot identifies itself by token, not machine. To migrate:
+
+```bash
+# On the current machine
+tar czf Verification_bot_backup.tar.gz Verification_bot/
+
+# On the new machine
+tar xzf Verification_bot_backup.tar.gz
+cd Verification_bot
+pip install -r requirements.txt
+python verify_bot.py
+```
+
+Only one machine at a time should run the script with the same token —
+stop the old one before starting the new one. Make sure the tar includes
+`.env`, `attendees/`, `trolls/`, `config.json`, `graduation_state.json`,
+and `verified_log.json`, and `not_attended.json`, otherwise the new instance
+starts with defaults / no state (duplicate-verification protection and the
+not-attended list will be reset).
 
 ## Security notes
 
