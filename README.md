@@ -33,7 +33,7 @@ and posts a congratulations message in `#general`.
   they keep their roles but are excluded from graduation; persisted in `not_attended.json`
 - Optional scheduled auto-graduation by date (editable at runtime)
 - Public congratulations message in `#general` when a class graduates
-- `!hack <person>` — troll command with a countdown that sends a random gif/image
+<!-- - `!hack <person>` — troll command with a countdown that sends a random gif/image -->
 - Admin commands restricted to specific Discord roles (counsellor, admin, …)
 - Admin roles and the graduation schedule are **editable from Discord** —
   no restart needed, changes persist across restarts via `config.json`
@@ -148,14 +148,14 @@ from the `student` → `veteran` promotion.
 Role names are case-insensitive. The server owner and Discord-level admins
 always pass the check, so you can't lock yourself out completely.
 
-### Fun / troll
+<!-- ### Fun / troll
 
 | Command            | What it does                                                       |
 | ------------------ | ------------------------------------------------------------------ |
 | `!hack <person>`   | Counts down 3 → 2 → 1, then sends a random gif/image from `trolls/`. `<person>` can be a plain name, a sentence, or a `@mention`. |
 
 Anyone can run `!hack`. Place your gifs and images in the `trolls/` folder
-(`.gif`, `.png`, `.jpg`, `.jpeg`, `.webp` are recognised).
+(`.gif`, `.png`, `.jpg`, `.jpeg`, `.webp` are recognised). -->
 
 ### Scheduled (automatic) graduation (runtime-editable)
 
@@ -205,8 +205,8 @@ VERIFIED_LOG_FILE = "verified_log.json"  # persists claimed identities
 ALERT_CHANNEL_NAME = "mod-log"           # impersonation alerts go here (None to disable)
 ALERT_CATEGORY_NAME = None               # optional category for the alert channel
 
-TROLLS_DIR = "trolls"                    # folder of gifs/images for !hack
-TROLLS_EXTS = {".gif", ".png", ".jpg", ".jpeg", ".webp"}
+# TROLLS_DIR = "trolls"                    # folder of gifs/images for !hack
+# TROLLS_EXTS = {".gif", ".png", ".jpg", ".jpeg", ".webp"}
 
 NOT_ATTENDED_FILE = "not_attended.json"  # members excluded from graduation
 
@@ -266,8 +266,6 @@ Verification_bot/
 │   ├── astro_school_8_ny.csv
 │   ├── lecturers.csv
 │   └── tutors.csv
-├── trolls/                  # gifs/images used by !hack
-│   └── *.gif / *.png / …
 ├── config.json              # runtime config (admin roles + schedule)
 ├── graduation_state.json    # which scheduled graduations have run
 ├── verified_log.json        # which attendee identities have been claimed
